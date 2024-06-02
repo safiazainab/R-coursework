@@ -1,0 +1,242 @@
+### Chapter 6 Lab 1: Subset Selection Methods
+
+
+## 0. Install and load required packages
+
+# we will need the R package of the book, called ISLR
+# if you don't have it yet, run the following line to install it
+# install.packages("ISLR") # remove hashtag from beginning of the line to run it
+
+# load the package
+library(ISLR)
+
+# install and load the R package leaps that has many subset selection methods implemented
+install.packages("leaps") # install the package if you have not done so earlier
+library(leaps) # load it
+
+# install and load the R package glmnet that has various regularization methods implemented
+install.packages("glmnet") # install the package if you have not done so earlier
+library(glmnet) # load it
+
+# now you can start working on the examples!
+
+
+## 1. The data
+
+# we use the "Hitters" data from the ISLR package in this example
+# let's quickly explore the data
+?Hitters # help page explaining what is in the dataset
+class(Hitters) # it's a data frame object as usual
+dim(Hitters) # 322 observations and 20 variables
+names(Hitters) # variable names
+fix(Hitters) # pop-up window to look at the dataset
+
+# checking for missing data
+sum(is.na(Hitters$Salary)) # there are 59 missing salaries of baseball players
+Hitters <- na.omit(Hitters) # we should drop these cases for now
+sum(is.na(Hitters)) # now there aren't any missings
+
+# perfect, let's do the analyses!
+
+
+## 2. Best Subset Selection
+
+# the leaps package has a function the implements many subset selection methods
+?regsubsets
+
+# the default method is Best Subset Selection
+regfit.full <- regsubsets(Salary~., Hitters) # explain Salary with "all other variables in data" (.)
+                                             # using the Hitters dataset
+summary(regfit.full)
+# this shows which variables are in the best models per model size
+# but: the maximum size of subsets considered is 8 by default, so we are ignoring a lot of models
+
+# let's change this to the number of predictor variables we have here (19)
+regfit.full <- regsubsets(Salary~., data=Hitters, nvmax=19)
+reg.summary <- summary(regfit.full) # the result
+
+# here are the different components of the result
+names(reg.summary) 
+# let's look at the R2 for the best fitting models of each size
+reg.summary$rsq
+
+# now let's plot the RSS, Adjusted-R2, Cp and BIC measures by model size
+par(mfrow=c(2,2)) # tell R that we wan't 2 rows and 2 columns of plots in one figure
+# A. plot RSS by model size
+plot(reg.summary$rss, xlab="Number of Variables", ylab="RSS", type="l")
+# B. plot Adjusted-R2 by model size
+plot(reg.summary$adjr2, xlab="Number of Variables", ylab="Adjusted RSq", type="l")
+points(11, reg.summary$adjr2[11], col="red", cex=2, pch=20) # add point for maximum
+# C. plot Cp by model size
+plot(reg.summary$cp,xlab="Number of Variables",ylab="Cp",type='l')
+points(10,reg.summary$cp[10],col="red",cex=2,pch=20) # add point for minimum
+# D. plot BIC by model size
+plot(reg.summary$bic,xlab="Number of Variables",ylab="BIC",type='l')
+points(6,reg.summary$bic[6],col="red",cex=2,pch=20) # add point for minimum
+par(mfrow=c(1,1)) # set the layout back to the regular 1 plot / figure (good practice
+
+# where are the optimal values in the Adj-R2, Cp and BIC distributions
+which.max(reg.summary$adjr2) # 11-variable model
+which.min(reg.summary$cp)    # 10-variable model
+which.min(reg.summary$bic)   # 6-variable model
+
+# we can also plot an overview of which variables are in each model,
+# ordered by the different measures
+par(mfrow=c(2,2))
+plot(regfit.full,scale="r2", col='black') # e.g. highest R2 is the full model - all vars. included
+plot(regfit.full,scale="adjr2", col='black')
+plot(regfit.full,scale="Cp", col='black')
+plot(regfit.full,scale="bic", col='black')
+par(mfrow=c(1,1))
+
+# the lowest bic is the model containing 6 predictors (plus the intercept)
+# what are the coefficient estimates of this model?
+coef(regfit.full,6)
+# note that this is the same information we saw in the first set of plots
+# based on BIC, we would choose the model with 6 predictors
+
+# MINITASK: save the figures in a pdf file
+#           you need to use the pdf() and dev.off() functions
+#           check the help pages to figure out how: type ?pdf and ?dev.off in the console
+#           you can read more on graphics devices in R in many places, such as here:
+#           https://bookdown.org/rdpeng/exdata/graphics-devices.html
+
+
+## 3. Forward and Backward Stepwise Selection
+
+# forward and backward stepwise selection is carried out very similarly to the above
+# example in R
+
+# we use the regsubsets() function in leaps
+# with the additional argument "method" specified as either "foward" or "backward"
+regfit.fwd <- regsubsets(Salary~., data=Hitters, nvmax=19, method="forward")
+summary(regfit.fwd)
+regfit.bwd <- regsubsets(Salary~., data=Hitters, nvmax=19, method="backward")
+summary(regfit.bwd)
+
+# you could choose the best model in each case as it was shown for best subset selection
+# we will skip this now, but you can do it for practice if you wish
+
+# we can see that the results from the three procedures are different
+# e.g. for the model with 7 predictors
+coef(regfit.full, 7) # best 7-variable model from best subset selection
+coef(regfit.fwd, 7)  # best 7-variable model from forward stepwise selection
+coef(regfit.bwd, 7)  # best 7-variable model from backward stepwise selection
+# note that these contain different predictors because they consider a different
+# set of model specifications (consult the lecture slides for more details)
+
+
+## 4. Ridge Regression
+
+# ridge regression can be carried out using the glmnet() function in the
+# similarly titled R package (we installed and loaded it at the start)
+
+# let's define separate objects for the predictors (x) and outcome (y)
+x <- model.matrix(Salary~., Hitters)[,-1] # transform the data frame into a "model matrix" 
+                                         # that is more suitable for use with glmnet() and other
+                                         # functions (check ?model.matrix for more details)
+y <- Hitters$Salary # define the outcome vector
+
+# first we set up a "search grid" for our lambda tuning parameter
+# we will try 100 numbers ranging from 10^10 to 10^(-2)
+grid <- 10^seq(10,-2,length=100)
+# we could skip this step, as the function sets up a grid automatically
+
+# the argument alpha=0 will tell glmnet() that we want to fit a ridge regression
+# note that the functions standardizes the variables for you by default
+ridge.mod <- glmnet(x, y, alpha=0, lambda=grid)
+dim(coef(ridge.mod)) # we have 20 estimates (intercept + 19 predictors)
+                     # for 100 models (different lambdas)
+
+# let's check model no. 50
+ridge.mod$lambda[50] # the 50th lambda
+grid[50]             # same as the 50th element in our grid variable
+coef(ridge.mod)[,50] # the coefficients in the 50th model
+sqrt(sum(coef(ridge.mod)[-1,50]^2)) # the sum of squared estimates excluding the intercept
+
+# now model no. 60
+ridge.mod$lambda[60] # the 60th lambda
+coef(ridge.mod)[,60] # the coefficients in the 60th model
+sqrt(sum(coef(ridge.mod)[-1,60]^2)) # th sum of squared estimates excluding the intercept
+# note that the estimate sums are much lower when lambda is higher -> more shrinkage
+
+# let's see how we can split the dataset into test and validation sets
+# and calculate the test MSE for the ridge regression
+
+# first, randomly draw the row indices of the training set
+train <- sample(1:nrow(x), nrow(x)/2) # 131.5 elemnts will be understood as 131
+# then, define the test set as indices not to be kept - marked by a negative sign
+test <- (-train)
+# the test set of y is now defined as the vector y EXCEPT the elements marked by "-"
+y.test <- y[test]
+
+# fit a ridge regression on the trainin set, using the same lambda grid as before
+ridge.mod <- glmnet(x[train,], y[train], alpha=0, lambda=grid)
+# we can use the predict() function to predict for the test set
+ridge.pred <- predict(ridge.mod, s=4, newx=x[test,]) # lambda is defined here by s = 4 (for example)
+                                                     # newx defines the predictor test set
+
+# to calculate the test MSE, we take the mean of the squared differences between 
+# the predicted and observed outcomes
+mean((ridge.pred-y.test)^2)
+
+# the test MSE for an empty model would be computed like this
+# (every prediction for y is the mean of y)
+mean((mean(y[train])-y.test)^2)
+
+# we could repeat the same for any arbitrary value of lambda
+# however, it is a better approach to first use cross-validation to choose the tuning parameter
+# let's see how this works in R
+
+# the cv.glmnet() function performs k-fold cross-validation for glmnet models
+cv.out <- cv.glmnet(x[train,], y[train], alpha=0) # we do this on the training data
+                                                  # the default is 10-fold: nfolds=10
+                                                  # remember: alpha=0 is ridge regression!
+plot(cv.out) # the distribution of MSE for different lambda values
+
+# let's save the minimal lambda...
+bestlam <- cv.out$lambda.min
+bestlam
+
+# ... and calculate the test MSE using this value
+ridge.pred <- predict(ridge.mod, s=bestlam, newx=x[test,])
+mean((ridge.pred-y.test)^2)
+
+# we can also fit the ridge regression for the whole dataset again, using the best lambda
+out <- glmnet(x, y, alpha=0)
+# these are the estimates
+predict(out, type="coefficients", s=bestlam)[1:20,]
+
+
+## 5. The Lasso
+
+# carrying out the lasso is very similar to performing a ridge regression using glmnet
+# the argument alpha=1 tells the function we want to fit a lasso
+
+# we fit lasso models with many different tuning parameters on the training data defined above
+lasso.mod <- glmnet(x[train,], y[train], alpha=1, lambda=grid)
+# this is how the coefficients look at different lambda values:
+plot(lasso.mod, xvar="lambda")
+
+# let's calcualte the training error for each lambda to determine the optimal tuning parameter
+cv.out <- cv.glmnet(x[train,], y[train], alpha=1)
+plot(cv.out) # the distribution of cross-validation MSEs at different lambda values
+
+# the best lambda is where the test MSE is minimal
+bestlam <- cv.out$lambda.min
+
+# we can use our optimal lambda from the training set to calculate the actual test MSE as above
+lasso.pred <- predict(lasso.mod, s=bestlam, newx=x[test,])
+mean((lasso.pred-y.test)^2)
+
+# we can fit a lasso to the whole dataset and calculate coefficients with our optimal lambda
+out <- glmnet(x, y, alpha=1, lambda=grid)
+lasso.coef <- predict(out, type="coefficients", s=bestlam)[1:20,]
+lasso.coef
+lasso.coef[lasso.coef!=0]
+# note that quite a few of the coefficients are exactly 0 - we can exclude these from the model
+# this is an advantage of the lasso over ridge regression - it helps making models simpler,
+# and better interpretable!
+
+
+### END OF SCRIPT.
