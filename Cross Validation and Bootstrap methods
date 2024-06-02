@@ -1,0 +1,202 @@
+### DATA SCIENCE MODELLING - WEEK 6: RESAMPLING METHODS
+#
+# R examples from Chapter 5 of the book
+# "An Introduction to Statistical Learning with Applications in R"
+# (some explanations and modifications added by Andras Voros)
+#
+###
+
+### INSTRUCTIONS: Try out and aim to understand the commands in this script.
+#                 This will help you to solve the practical exercises and
+#                 be able to use the methods on your own.
+#                 Extensive notes are provided to help your learning.
+#                 If you find something unclear, feel free to ask about it
+#                 in the week's forum or in the live lecture session.
+
+### CONTENTS
+#   0. Install/load packages
+#   1. The data
+#   2. The Validation Set Approach
+#   3. Leave-One-Out Cross-validation
+#   4. k-fold Cross-Validation
+#   5. The bootstrap
+
+
+
+### Chaper 5 Lab: Cross-Validation and the Bootstrap
+
+
+## 0. Install and load required packages
+
+# we will need the R package of the book, called ISLR
+# if you don't have it yet, run the following line to install it
+install.packages("ISLR")
+
+# load the package
+library(ISLR)
+
+# install and load the boot package as well, which contains the glm() function
+install.packages("boot") # if you do not have it installed, use the command first
+library(boot) # load the package
+
+# now you can start working on the examples!
+
+
+## 1. The data
+
+# we will work on the "Auto" dataset in the ISLR package in this script
+# let's quickly explore the dataset
+?Auto # see the help page explaining what is in the dataset
+class(Auto) # it's a data frame object
+dim(Auto) # has 9 variables about 392 cars
+head(Auto) # a quick glance at the variables and types of data stored in them
+
+# let's set up a short-cut: attach the dataset to R's search path
+# so that we can refer to variables in the data as if they were R objects in the workspace
+attach(Auto)
+
+# time to try out the resampling methods
+
+
+## 2. The Validation Set Approach
+
+# This method just randomly splits the dataset into two parts
+# (of equal size for simplicity) and uses one part as the training
+# set and the other as the test (validation) set. The test error is 
+# estimated from the test set.
+
+# A. randomly draw half of observations to be the training set
+train <- sample(392,196) # note that the result is different every time you run this
+# B. estimate linear regression on training set, explaining miles per gallon with horsepower
+lm.fit <- lm(mpg~horsepower,data=Auto,subset=train)
+summary(lm.fit) # it might be familiar by now
+# C. calculate the MSE on the validation set
+mean((mpg-predict(lm.fit,Auto))[-train]^2)
+# note that [-train] excludes the training set from "Auto", just as we would like to do it
+
+# we can repeat steps A-B-C on a model with the quadratic effect of horsepower
+lm.fit2 <- lm(mpg~poly(horsepower,2),data=Auto,subset=train)
+summary(lm.fit2)
+mean((mpg-predict(lm.fit2,Auto))[-train]^2)
+
+# and A-B-C again on a model with the quadratic and cubic effects of horsepower 
+lm.fit3 <- lm(mpg~poly(horsepower,3),data=Auto,subset=train)
+summary(lm.fit3)
+mean((mpg-predict(lm.fit3,Auto))[-train]^2)
+
+# we could now compare the MSE for the different models and choose the best
+
+# MINITASK: How do you interpret the three MSE calculated above?
+#           Which model is the best?
+
+# note: if you run the above code several times, you will get different results
+#       due to the random sampling
+
+# Here, we have reproduced some of the data used in Figure 5.2 of the book
+
+
+## 3. Leave-One-Out Cross-Validation
+
+# This method selects one observation to be the test set, while the rest are used
+# as the training set. The process is repeated n times (size of sample) and the
+# test errors are averaged.
+
+# we use glm() function from the boot package here
+glm.fit <- glm(mpg~horsepower,data=Auto) # glm with the defaults fits a linear regression
+summary(glm.fit)
+
+# the following line performs a LOOCV
+cv.err <- cv.glm(Auto,glm.fit)
+cv.err$delta
+# the results are two numbers:
+# - the first is the regular average MSE
+# - the second is a corrected version - let's ignore this now, the two are almost equal anyway
+
+# for a meaningful use: carry out LOOCV on the first five polynomial models from above
+cv.error <- rep(0,5) # we prepare the (empty) object for the MSEs
+for (i in 1:5) {                                   # repeat with i going from 1 to 5:
+  glm.fit <- glm(mpg~poly(horsepower,i),data=Auto) # fit model with i polynomial terms
+  cv.error[i] <- cv.glm(Auto,glm.fit)$delta[1]     # save the first (regular) MSE 
+                                                   # in the ith cell of the result object
+}
+cv.error # the result
+
+# The MSEs can be compared and the best model can be selected.
+# With this, we have reproduced a part of the left panel of Figure 5.4 in the book:
+plot(1:5, cv.error, 
+     type='b', col='red', pch=16,
+     xlim=c(1,10), ylim=c(15,29),
+     xlab='Degree of Polynomial', ylab='Mean Squared Error')
+
+
+## 4. k-Fold Cross-Validation
+
+# This method selects 1/kth of the observations to the test set, the rest 
+# are used as the training set. The process is repeated k times so that the
+# intersection of the k test sets is the empty set (each observation is in
+# exactly one test set). The test errors are averaged from the k test sets.
+
+# this is actually done almost exactly as the LOOCV in R
+# cv.glm() implements k-fold cross-validation, where the 
+# argument "K" defaults to n - the LOOCV case
+
+# we run the same loop as above (up to ten polynomials this time)
+# but specify K=10 in cv.glm(), defining a 10-fold cross-validation
+cv.error.10 <- rep(0,10)
+for (i in 1:10){
+  glm.fit <- glm(mpg~poly(horsepower,i),data=Auto)
+  cv.error.10[i] <- cv.glm(Auto,glm.fit,K=10)$delta[1]
+}
+cv.error.10
+
+# We have reproduced here one of the potential lines in the right panel of Figure 5.4:
+plot(1:10, cv.error.10, 
+     type='l', col='blue',
+     xlim=c(1,10), ylim=c(15,29),
+     xlab='Degree of Polynomial', ylab='Mean Squared Error')
+
+# Note that the results would be somewhat different in every run, 
+# as the 1/10th of elements in the test set are sample randomly.
+
+
+## 5. The Bootstrap
+
+# This method selects a sample of some observations (often n) with replacement.
+# The sample is used for esimation. The process is repeated a large
+# number of times, e.g. 1000. The variability of the estimates provide
+# an approximation for the standard error.
+
+# We test this approach on a linear regression, but it is practically useful
+# in cases when the s.e. cannot be directly estimated (sampling distribution
+# is unknown).
+
+# Estimating the Accuracy of a Linear Regression Model
+
+# define function that estimates model using an arbitrary subset of the data
+boot.fn <- function(data, index)
+  return(coef(lm(mpg~horsepower, data=data, subset=index)))
+
+# try it on all of the observations of the Auto dataset
+boot.fn(Auto, 1:392) # these are the lm coefficients on the full data
+
+# now on bootstrap samples
+boot.fn(Auto, sample(392, 392, replace=T)) # one sample of 392 obs. drawn WITH REPLACEMENT
+boot.fn(Auto, sample(392, 392, replace=T)) # another sample, slightly different from above
+
+# the boot() function in package boot can put together results from many of our samples
+?boot
+boot(Auto, boot.fn, 1000) # the bootstrap estimates
+summary(lm(mpg~horsepower, data=Auto))$coef # the actual lm coefficients - they are quite close
+
+# with slight modifications to our own boot.fn() function, we can repeat
+# the exercise on the model containing the quadratic horsepower term:
+boot.fn <- function(data, index)
+  coefficients(lm(mpg~horsepower+I(horsepower^2), data=data, subset=index))
+boot(Auto, boot.fn,1000)
+summary(lm(mpg~horsepower+I(horsepower^2), data=Auto))$coef
+# the standard errors should be quite similar
+
+# Remember: using the linear model case here is just an illustration,
+#           the bootstrap is an important tool in other cases, 
+#           when the s.e. cannot be easily estimated otherwise.
+
