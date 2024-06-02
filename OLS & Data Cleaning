@@ -1,0 +1,65 @@
+## Load packages via 'pacman' package manager
+pacman::p_load(lubridate, magrittr, sjPlot, tidyverse)
+
+## Import the football data
+fb <- read.csv('CrowdstormingDataJuly1st.csv')
+glimpse(fb) # Check the data
+
+## Use the 'aggregate()' function to collapse the data for key measures
+## Outcome variable -- sum penalties given and games played
+ycards <- aggregate(yellowCards ~ playerShort, sum, data = fb) # Yellows
+yrcards <- aggregate(yellowReds ~ playerShort, sum, data = fb) # Yellow-Reds
+rcards <- aggregate(redCards ~ playerShort, sum, data = fb) # Reds
+games <- aggregate(games ~ playerShort, sum, data = fb) # Games
+## Predictor variable - mean ratings to get unique value
+tone1 <- aggregate(rater1 ~ playerShort, mean, data = fb) # Rater 1
+tone2 <- aggregate(rater2 ~ playerShort, mean, data = fb) # Rater 2
+
+fb2 <- merge(ycards, yrcards, by = "playerShort")
+
+## Merge the datasets using the 'left_join()' function from 'tidyverse'
+fb.wide <- list(ycards, yrcards, rcards, games, tone1, tone2) %>%
+  reduce(left_join, by = "playerShort")
+glimpse(fb.wide)
+
+
+round(prop.table(table(fb$leagueCountry)), 2)
+
+fb %>%
+  select(leagueCountry) %>%
+  table() %>%
+  prop.table() %>%
+  round(2)
+
+
+## Create tone, proportion of penalties (any cards / games played),
+## and penalisation rate per 100 games(proportion * 100)
+fb.wide %<>% # Note the two-way pipe % < > % !
+  mutate(
+    avg.tone = (rater1 + rater2)/2 ,
+    prop.cards = (yellowCards + yellowReds + redCards)/games,
+    rate = prop.cards * 100
+  )
+## Always check your work!
+fb.wide %>%
+  select(avg.tone, prop.cards, rate) %>%
+  summary()
+
+## Distribution of penalisation rate
+fb.wide %>%
+  ggplot() +
+  geom_density(aes(rate), fill = "lightblue") +
+  xlab("Penalty Rate (per 100 games)") +
+  ylab("Density") +
+  ggtitle("Distribution of Penalty Rate")
+
+## Regression model - any penalty rate
+model.1 <- lm(rate ~ avg.tone, data = fb.wide)
+summary(model.1)
+
+plot(jitter(fb.wide$avg.tone, 3), fb.wide$rate)
+
+## Print results using 'sjPlot'
+## They will appear as an .html output in the 'Viewer' pane
+tab_model(model.1)
+
