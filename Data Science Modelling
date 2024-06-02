@@ -1,0 +1,86 @@
+## Set the working directory
+
+## Load packages
+install.packages('pacman')
+
+pacman::p_load(tidyverse)  # Load tidyverse using pacman
+
+
+## Import the data
+red <- read.csv('winequality-red.csv')
+head(red)  # Check the data...oops!
+
+red <- read.csv('winequality-red.csv', sep = ';')  # Add delimiter
+glimpse(red)  # Check the data
+head(red)  # Could also use base R
+
+white <- read.csv('winequality-white.csv', sep = ';')
+glimpse(white)
+
+## Descriptive statistics
+summary(red)
+
+## Create paired scatterplots
+pairs(red)  # Hmm...that's too many!
+plot(quality ~ ., data = red)  ## Better, but now one at a time
+
+par(mfrow = c(3, 4))  # Combine the plots into one
+plot(quality ~ ., data = red)  ## Ok, but we need jitter
+dev.off()  # Clear the plotting space
+
+plot(quality ~ pH, data = red)  # Default scatter plot
+plot(jitter(quality, 2.5) ~ pH, data = red)  # Adding random noise (aka, jitter)
+
+par(mfrow = c(3, 4))  # Combine the plots into one
+plot(jitter(quality, 2.5) ~ ., data = red)  ## Ok, but we need jitter
+dev.off()  # Clear the plotting space
+
+## Check the correlations
+cor(red)
+
+## Plot the correlations using corrplot
+pacman::p_load(corrplot)  # Use 'pacman' to load 'corrplot' 
+corrplot(cor(red))  # Plot the correlations
+corrplot(cor(red),  # Make it prettier!
+         method = 'color',  # Change shape to coloured squares
+         type = 'lower',   # Only show the lower half of the table
+         addCoef.col = 'black')  # Add the correlation coefficients in black
+
+#### Let's get to modelling!
+## Maybe we should check the linearity of the scatterplots?
+pacman::p_load(GGally)  # Use 'pacman' to load 'GGally'
+ggpairs(red)  # Wow!
+
+## Custom function to return points and geom_smooth
+custom_function = function(data, mapping, method = "loess", ...)
+  {
+  p = ggplot(data = data, mapping = mapping) + 
+    geom_point() + 
+    geom_smooth(method = method, ...)
+  p
+}
+
+## Add jitter first
+red.jitter <- red
+red.jitter$quality <- jitter(red$quality, 2.5)
+ggpairs(red.jitter, lower = list(continuous = custom_function))
+
+
+## Linear regression, starting with a highly correlated variable
+reg1 <- lm(quality ~ alcohol, data = red)
+summary(reg1)
+
+## Linear regression, adding a second (highly correlated) variable
+reg2 <- lm(quality ~ alcohol + volatile.acidity, 
+           data = red)
+summary(reg2)
+
+## But what happens if we add a poor predictor?
+reg3 <- lm(quality ~ alcohol + volatile.acidity + residual.sugar, 
+           data = red)
+summary(reg3)
+
+## Quadratic term?
+reg4 <- lm(quality ~ alcohol + volatile.acidity + sulphates + I(sulphates^2), 
+           data = red)
+summary(reg4)
